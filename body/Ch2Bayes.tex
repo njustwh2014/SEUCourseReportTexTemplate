@@ -1,0 +1,148 @@
+\section{朴素贝叶斯分类器实现}
+\subsection{朴素贝叶斯(Naive Bayesian, NB)分类器原理}
+NB分类算法是概率学派的经典算法，也是机器学习中的一个非常经典非常基础的分类算法，NB算法有很强的数学
+理论作为支撑。
+
+假设我们有一组训练数据：
+$$\{(x_1,c_1),(x_2,c_2),\cdots,(x_n,c_n)\}$$
+其中ci是每个数据的标签类别，xi是特征向量，我们需要根据这些训练数据训练一个朴素贝叶斯分类器来对新
+数据进行分类。
+
+既然是贝叶斯学派的算法，我们首先不得不引入贝叶斯公式，这也是算法的基础：
+\begin{equation}
+  \label{eq:bayesBase}
+  P(c|x)=\frac{P(c)P(x|c)}{P(x)}
+\end{equation}
+这里可以进行理解： 
+\begin{enumerate}
+  \item $P(c|x)$：对于给定特征属性x条件下，数据属于c类别的概率
+  \item $P(c)$：样本空间中各个类别所占的比例
+  \item $P(x|c)$：对于给定类别的条件下的特征属性组合是x的概率
+\end{enumerate}
+
+然而$P(x|c)P(x|c)$是不能直接求得的，因为这里涉及到x的联合概率，即$P(x|c)＝P(x_1,x_2,\cdots,x_n|c)P(x|c)$，直接估计每个类别c下的特征属性x的频率是不准确的，
+首先$x$的排列组合空间数可能会非常大，会引起组合爆炸问题，其次$x$的所有排列组合中有很多情况是
+样本数据中并没有出现的，这就引起了数据稀疏的问题，所以$P(x|c)P(x|c)$是不能直接进行求解
+的。
+
+为了解决上述问题，于是，在NB算法中作出一个非常重要的假设，那就是数据的每个属性是条件独立的，
+因为属性是相互独立的，那么我们就不需要使用联合概率来表示上面的
+$P(x|c)＝P(x_1,x_2,\cdots,x_n|c)$了，
+我们可以得到新的公式：
+\begin{equation}
+  \label{eq:bayesBaseNew}
+  P(c|x)=\frac{P(c)P(x|c)}{P(x)}=\frac{P(c)}{P(x)}\prod_{i=1}^d P(x_i|c)
+\end{equation}
+
+我们可以看到，因为有了属性条件独立的假设，$P(x|c)＝\prod_{i=1}^d P(x_i|c)$，
+$d$为属性个数。这样我们 就很好进行计算了，只需要分别统计每个类别下的属性取值所占比例即可。
+这也就是我们的似然函数，我们可以将$\prod_{i=1}^d P(x_i|c)$取对将连乘转换为累加，避免数据下溢，
+来进行计算\upcite{西瓜书}。
+
+\subsection{朴素贝叶斯分类器实现}
+\subsubsection{数据预处理}
+从\ref{Ch:Mnist}我们已经从Mnist数据集读取了我们训练分类器所需要的图片和标签数据，
+然而得到的图片是28*28的数组，为了便于后续计算，我们需要将二维数组转为一维数组。
+\begin{python}
+  # 训练集图片
+  train_input=train_images.reshape((train_images.shape[0],train_images.shape[1]*train_images.shape[2]),order='F')
+  #测试集图片
+  test_input=test_images.reshape((test_images.shape[0],test_images.shape[1]*test_images.shape[2]),order='F')
+\end{python}
+
+将图像进行二值化处理，以减少了属性量，从而减少了运算量。
+\begin{python}
+  def normalize(data):
+    m=data.shape[0]
+    n=np.array(data).shape[1]
+    for i in range(m):
+        for j in range(n):
+            if data[i,j]!=0:
+                data[i,j]=1
+    return data
+\end{python}
+
+\subsubsection{NB分类器实现}
+首先计算先验概率和条件概率。
+\begin{python}
+  def BayesModel(traindata,trainlabel,classnum):
+    traindatasize=traindata.shape[0]
+    samplesize=traindata.shape[1]
+    
+    #先验概率
+    PriorProbability=np.zeros(classnum)
+    #条件概率
+    ConditionalProbability=np.zeros((classnum,samplesize,2))
+    #计算先验概率和条件概率
+    for i in range(traindatasize):
+        sample=traindata[i]
+        label=int(trainlabel[i])
+        #统计label类的label数量
+        PriorProbability[label]+=1
+        for j in range(samplesize):
+            temp=int(sample[j])
+            ConditionalProbability[label][j][temp]+=1
+    
+    #将概率归到[1.10001]
+    for i in range(classnum):
+        for j in range(samplesize):
+            #经过二值化的图像只有0，1两种取值
+            pix0=ConditionalProbability[i][j][0]
+            pix1=ConditionalProbability[i][j][1]
+
+            #计算0，1像素点对应的条件概率
+            probability0=(float(pix0)/float(pix0+pix1))*10000+1
+            probability1 = (float(pix1)/float(pix0 + pix1)) * 10000 + 1
+
+            ConditionalProbability[i][j][0]=probability0
+            ConditionalProbability[i][j][1]=probability1
+    
+    return PriorProbability,ConditionalProbability
+\end{python}
+
+对于给定的测试样本，可以计算先验概率与条件概率的乘积。
+\begin{python}
+  def calProbability(sample,label,PriorProbability,ConditionalProbability):
+    probability=int(PriorProbability[label])#先验概率
+    samplesize=sample.shape[0]
+    for i in range(samplesize):#应该是特征数
+        probability*=int(ConditionalProbability[label][i][sample[i].astype(int)])
+    return probability
+\end{python}
+
+这样就可以确定该样本所属的分类，相当于做了argmax运算。
+\begin{python}
+  def predict(testdata,testlabel,PriorProbability,ConditionalProbability,classnum):
+    predictLabel=[]
+    testdatasize=testdata.shape[0]
+    testsamplesize=testdata.shape[1]
+    for i in range(testdatasize):
+        sample=np.array(testdata[i])
+        label=testlabel[i]
+        maxlabel=0
+        maxprobability=calProbability(sample,0,PriorProbability,ConditionalProbability)
+        for j in range(1,classnum):
+            probability=calProbability(sample,j,PriorProbability,ConditionalProbability)
+            if(maxprobability<probability):
+                maxprobability=probability
+                maxlabel=j
+        predictLabel.append(maxlabel)
+    return np.array(predictLabel)
+\end{python}
+
+\subsection{分类器准确性分析}
+\subsubsection{计算准确率}
+\begin{python}
+  def calAccuracy(testlabel,predictlabel):
+    testdatasize=testlabel.shape[0]
+    errorcount=0
+    for i in range(testdatasize):
+        if(testlabel[i]!=predictlabel[i]):
+            errorcount+=1
+    accuracy=1.0-float(errorcount)/testdatasize
+    return accuracy
+\end{python}
+\subsubsection{分析}
+最终训练出的分类器的准确率约为$84.5\%$，可以发现远低于kNN分类器的$96.5\%$的分类准确性，这可能由于
+是对数据进行二值化处理导致的，然而如果不进行二值化处理，计算量过大，本人计算机跑不出来。
+

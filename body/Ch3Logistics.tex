@@ -1,0 +1,118 @@
+\section{逻辑回归分类器实现}
+
+\subsection{逻辑回归实现多分类原理}
+通常，主要使用逻辑回归解决二分类的问题，但同样也可以使用逻辑回归解决多分类问题。
+\subsubsection{one vs rest}
+由于概率函数$h_{\theta}(x)$所表示的是样本标记为某一类型的概率，但可以将一对一（二分类）扩展为一对多（one vs rest）：
+\begin{enumerate}
+  \item 将类型class1看作正样本，其他类型全部看作负样本，然后我们就可以得到样本标记类型为该类型的概率p1;
+  \item 然后再将另外类型class2看作正样本，其他类型全部看作负样本，同理得到p2；
+  \item 以此循环，我们可以得到该待预测样本的标记类型分别为类型class i时的概率pi，最后我们取pi中最大的那个概率对应
+  的样本标记类型作为我们的待预测样本类型。
+\end{enumerate}
+
+\subsubsection{softmax函数}
+使用softmax函数构造模型解决多分类问题。
+softmax回归分类器需要学习的函数为 ：
+\begin{equation}
+  h_\omega (\vec x)=\frac{1}{\sum_{i=1}^k e^{\vec{\omega_i}\cdot\vec{x}+b_i}}\begin{bmatrix}
+    \vec{\omega_1}\cdot\vec x+b_1     \\
+    \vec{\omega_2}\cdot\vec x+b_2 \\
+    \vdots \\
+    \vec{\omega_k}\cdot\vec x+b_k
+  \end{bmatrix}
+\end{equation}
+其中k个类别的个数这里写$\vec{\omega_i}$和$b_i$为第$i$个类别对应的权重向量和偏移标量。
+其中$\frac{\vec{\omega_j}\cdot\vec{x}+b_j}{\sum_{i=1}^k e^{\vec{\omega_i}\cdot\vec{x}+b_i}}=P(y=j|\vec{x})$可看作样本X的标签为第$j$个类别的概率，且有$\sum_{j=1}^{k}P(y=j|\vec{x})=1$。
+
+与logistic回归不同的是，softmax回归分类模型会有多个的输出，且输出个数与类别个数相等，输出为样本X为各个类别的概率，最后对样本进行预测的类型为概率最高的那个类别。
+
+我们需要通过学习得到$\vec{\omega_i}$和$b_i$，因此建立目标损失函数为：
+\begin{equation}
+  J(\omega,b)=-\frac{1}{m}\sum_{j=1}^{m}\sum_{l=1}^{k}1\{y^{(j)}=l\}log(\frac{e^{\vec{\omega_l}\vec{x^{(j)}}+b_l}}{\sum_{i=1}^{k}e^{\vec{\omega_i}\vec{x^{(j)}}+b_i}})
+\end{equation}
+上式的代价函数也称作：对数似然代价函数。在二分类的情况下，对数似然代价函数 可以转化为 交叉熵代价函数。
+
+其中 $m$ 为训练集样本的个数，$k$ 为 类别的个数，$1\{\cdot\}$为示性函数，当$y^{(j)}=l$ 为真时，函数值为 1 ，否则为 0 ，即 样本类别正确时，函数值才为 1 。
+
+通过对数性质以及梯度下降法和链式偏导，化简得：
+\begin{equation}
+  \frac{\partial{J(\omega,b)}}{\partial\vec{\omega_r}}=-\frac{1}{m}\sum_{j=1}^m\left(\vec{x^{(j)}}-P(y^{(i)}=r|x^{(j)})*\vec{x^{(j)}}\right)
+\end{equation}
+因此由梯度下降法进行迭代：
+\begin{equation}
+  \vec{\omega_r}=\vec{\omega_r}-\alpha\frac{\partial{J(\omega,b)}}{\partial\vec{\omega_r}}
+\end{equation}
+同理 通过梯度下降法最小化损失函数也可以得到$b_i$的最优值。同逻辑回归一样，可以给损失函数加上正则化项。
+
+当标签类别之间是互斥时，适合选择softmax回归分类器 ;当标签类别之间不完全互斥时，适合选择建立多个独立的logistic回归分类器。由于Mnist数据集类别间互斥，故选择softmax回归分类器。
+
+\subsection{实现softmax回归分类器}
+由于最近在学习tensorflow，想借用作业机会，运用tensorflow实现softmax回归分类器。
+\subsubsection{加载数据}
+tensorflow内部集成了Mnist数据集，并且label文件格式是每个样本为一维10元素数组，若为哪一类则对应为1。
+\begin{python}
+  #Mnist数据集
+  from tensorflow.examples.tutorials.mnist import input_data
+  mnist=input_data.read_data_sets('data/',one_hot=True)
+  trainimg=mnist.train.images #28*28*1
+  trainlabel=mnist.train.labels#1*10
+  testimg=mnist.test.images#28*28*1
+  testlabel=mnist.test.labels#1*10
+\end{python}
+\subsubsection{softmax分类器实现}
+分类器参数设置。
+\begin{python}
+  #逻辑回归
+  #参数设置
+  numClasses=10
+  inputSize=784
+  trainingIterations=50000
+  batchSize=64#设置batch大小
+  #指定x和y大小
+  X=tf.placeholder(tf.float32, shape=[None,inputSize])
+  y=tf.placeholder(tf.float32,shape=[None,numClasses])
+  #参数初始化
+  W1=tf.Variable(tf.random_normal([inputSize,numClasses],stddev=0))
+  B1=tf.Variable(tf.constant(0.1),[numClasses])
+\end{python}
+
+构建模型。
+\begin{python}
+  #构造模型
+  y_pred=tf.nn.softmax(tf.matmul(X,W1)+B1)
+
+  loss=tf.reduce_mean(tf.square(y-y_pred))
+  opt=tf.train.GradientDescentOptimizer(learning_rate=0.05).minimize(loss)
+
+  correct_prediction=tf.equal(tf.argmax(y_pred,1),tf.argmax(y,1))
+  accuracy=tf.reduce_mean(tf.cast(correct_prediction,"float"))
+
+  sess=tf.Session()
+  init=tf.global_variables_initializer()
+  sess.run(init)
+\end{python}
+
+迭代计算。
+\begin{python}
+  #迭代计算
+  for i in range(trainingIterations):
+      batch=mnist.train.next_batch(batchSize)
+      batchInput=batch[0]
+      batchLabels=batch[1]
+      _,trainingLoss=sess.run([opt,loss],feed_dict={X:batchInput,y:batchLabels})
+      if i%1000==0:
+          train_accuracy=accuracy.eval(session=sess,feed_dict={X:batchInput,y:batchLabels})
+          print("step %d, training accuracy %g"%(i,train_accuracy))
+\end{python}
+
+\subsection{测试结果与分析}
+\begin{python}
+  #测试结果
+  batch=mnist.test.next_batch(batchSize)
+  testAccuracy=sess.run(accuracy,feed_dict={X:batch[0],y:batch[1]})
+  print("test accuracy %g"%(testAccuracy))
+\end{python}
+最终得到模型准确率为$90.5\%$。
+
+

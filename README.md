@@ -11,4 +11,7 @@
 
 * 设定主文档为`thesis.tex`，尝试进行编译，并比较编译文档和`thesis(back).pdf`之间的差异
 
+### 使用记录
++ \pagenumbering的常用参数有gobble、arabic和roman，分别代表无页码、阿拉伯数字页码和罗马数字页码。
 
++ 数学符号：https://blog.csdn.net/garfielder007/article/details/51646604
